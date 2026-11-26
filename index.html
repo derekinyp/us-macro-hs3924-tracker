@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>美國經濟生活、消費轉向與 HS 3924 產業追蹤儀表板</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif; background-color: #f8fafc; color: #0f172a; }
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; }
+    .chart-box { position: relative; height: 320px; width: 100%; }
+    .tab-btn.active { background-color: #0f172a; color: #ffffff; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <header class="bg-slate-900 text-white border-b border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="badge bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">100% 官方 API 原始序列</span>
+          <span class="badge bg-sky-500/20 text-sky-300 border border-sky-500/40">近十年動態追蹤</span>
+        </div>
+        <h1 class="text-xl sm:text-2xl font-bold mt-2">美國民眾經濟條件、消費轉向與 HS 3924 容器追蹤戰情室</h1>
+        <p class="text-slate-400 text-sm mt-1">資料來源：聖路易聯準銀行 FRED (BEA / BLS / Fed / Census) ＋ 美國人口普查局國際貿易 API</p>
+      </div>
+      <div class="text-right text-xs text-slate-400">
+        <div>最後更新 (UTC)：<span id="last-updated" class="text-slate-200 font-mono">載入中...</span></div>
+        <div class="mt-1">零內插・零補值・缺漏明示</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <div id="init-banner" class="hidden bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-4 text-sm">
+      <strong>尚未抓取首次官方數據：</strong>請先於 GitHub Repository Settings 設定 <code>FRED_API_KEY</code> 與 <code>GEMINI_API_KEY</code>，並至 Actions 分頁手動執行一次 <code>Update US Macro & HS3924 Data</code>，完成後重新整理本頁即可看到完整近 10 年真實曲線。
+    </div>
+
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="kpi-strip"></section>
+
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h2 class="text-lg font-bold text-slate-900">本期綜合判讀（AI 數據鎖定分析）</h2>
+        <span id="ai-model-tag" class="badge bg-indigo-50 text-indigo-700 border border-indigo-200">Gemini 自動判讀</span>
+      </div>
+      <p id="ai-headline" class="text-base font-semibold text-indigo-900 mb-2">載入中...</p>
+      <p id="ai-summary" class="text-sm text-slate-700 leading-relaxed mb-4"></p>
+      <div id="ai-cards" class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4"></div>
+      <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+        <div class="text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">HS 3924 非一次性塑膠乾式食品容器專項判讀</div>
+        <p id="ai-hs-summary" class="text-sm text-slate-800 leading-relaxed"></p>
+        <p id="ai-hs-implication" class="text-sm text-emerald-800 font-medium mt-2"></p>
+      </div>
+    </section>
+
+    <nav class="flex flex-wrap gap-2">
+      <button class="tab-btn active px-4 py-2 rounded-lg text-sm font-semibold border border-slate-300 bg-white text-slate-700 transition" data-tab="macro">1. 所得與緩衝 (10年)</button>
+      <button class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold border border-slate-300 bg-white text-slate-700 transition" data-tab="wealth">2. 財富分化與違約 (10年)</button>
+      <button class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold border border-slate-300 bg-white text-slate-700 transition" data-tab="inflation">3. 通膨體感 (10年)</button>
+      <button class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold border border-slate-300 bg-white text-slate-700 transition" data-tab="consumption">4. 消費轉向細項 (10年)</button>
+      <button class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold border border-slate-300 bg-white text-slate-700 transition" data-tab="hs3924">5. HS 3924 塑膠容器替代 (5年)</button>
+    </nav>
+
+    <section id="tab-macro" class="tab-panel grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 class="font-bold text-slate-900">實質可支配個人所得 YoY% vs. 個人儲蓄率</h3>
+          <span class="badge bg-emerald-50 text-emerald-700 border border-emerald-200">稅後｜含政府補助｜已扣通膨｜不含資本利得</span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">來源：BEA (`DSPIC96`, `PSAVERT`)｜儲蓄率長期低於 5% 代表家庭財務緩衝偏薄</p>
+        <div class="chart-box"><canvas id="chart-income"></canvas></div>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 class="font-bold text-slate-900">實質家庭中位數所得（一般中產基準）</h3>
+          <span class="badge bg-amber-50 text-amber-800 border border-amber-200">稅前｜僅含現金補助｜已扣通膨｜年更</span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">來源：US Census (`MEHOINUSA672N`)｜排除頂層富豪拉高平均數干擾</p>
+        <div class="chart-box"><canvas id="chart-median"></canvas></div>
+      </div>
+    </section>
+
+    <section id="tab-wealth" class="tab-panel hidden grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 class="font-bold text-slate-900">頂層 1% vs. 底層 50% 淨財富佔比</h3>
+          <span class="badge bg-slate-100 text-slate-700 border border-slate-300">淨財富 = 總資產 − 總負債 (每季)</span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">來源：聯準會 DFA (`WFRBST01134`, `WFRBSB50215`)｜不含社會安全金未來領取權</p>
+        <div class="chart-box"><canvas id="chart-wealth"></canvas></div>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 class="font-bold text-slate-900">商業銀行信用卡違約率（財務壓力領先指標）</h3>
+          <span class="badge bg-rose-50 text-rose-700 border border-rose-200">每季｜季調</span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">來源：聯準會 (`DRCCLACBS`)｜監測底層與青年族群是否開始無法償還循環卡債</p>
+        <div class="chart-box"><canvas id="chart-delinq"></canvas></div>
+      </div>
+    </section>
+
+    <section id="tab-inflation" class="tab-panel hidden grid grid-cols-1 gap-5">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 class="font-bold text-slate-900">整體 PCE vs. 核心 PCE vs. 居住類 CPI 年增率 (%)</h3>
+          <span class="badge bg-sky-50 text-sky-700 border border-sky-200">每月｜官方原始序列計算 YoY</span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">來源：BEA (`PCEPI`, `PCEPILFE`) 與 BLS (`CUSR0000SAH1`)｜觀察官方通膨與無房族剛性租金壓力的落差</p>
+        <div class="chart-box"><canvas id="chart-inflation"></canvas></div>
+      </div>
+    </section>
+
+    <section id="tab-consumption" class="tab-panel hidden grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 class="font-bold text-slate-900">實質消費結構：耐久財 vs. 非耐久財 vs. 服務 (YoY%)</h3>
+          <span class="badge bg-emerald-50 text-emerald-700 border border-emerald-200">已扣通膨 (2017連鎖美元)</span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">來源：BEA (`PCEDGC96`, `PCENDC96`, `PCESC96`)｜看清錢流向大件商品、日常必需還是體驗服務</p>
+        <div class="chart-box"><canvas id="chart-pce-mix"></canvas></div>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 class="font-bold text-slate-900">生活場景轉移：外食÷超市剪刀差 ＆ 電商滲透率</h3>
+          <span class="badge bg-purple-50 text-purple-700 border border-purple-200">衍生交叉指標</span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">來源：US Census (`MRTSSM722USS / RSGCS`, `ECOMPCTSA`)｜比率下滑代表家庭縮減外食、回歸自煮</p>
+        <div class="chart-box"><canvas id="chart-retail-shift"></canvas></div>
+      </div>
+    </section>
+
+    <section id="tab-hs3924" class="tab-panel hidden space-y-5">
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-900 space-y-1">
+        <div class="font-bold">口徑防呆警語（判讀必讀）：</div>
+        <div>1. 美國人口普查局（US Census）海關數據僅統計「美國進口金額」，<strong>不包含美國本土射出廠（如 Sterilite、Rubbermaid 美國廠）當地生產內銷的份額</strong>。</div>
+        <div>2. <code>HS 3924.10</code> 與 <code>HTS 3924.10.4000</code> 涵蓋廣義塑膠餐廚用具，最適合用來觀察<strong>近 5 年長期趨勢與材質相對佔比消長</strong>，而非單一 SKU 精確銷量。</div>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h3 class="font-bold text-slate-900">美國進口 12 個月滾動份額：塑膠 vs. 玻璃 vs. 不鏽鋼</h3>
+            <span class="badge bg-indigo-50 text-indigo-700 border border-indigo-200">US Census 月度滾動 (消除季節性)</span>
+          </div>
+          <p class="text-xs text-slate-500 mb-3">對照 `HS 392410` (塑膠) vs `HS 701349` (玻璃) vs `HS 732393` (不鏽鋼) 的相對進口份額 (%)</p>
+          <div class="chart-box"><canvas id="chart-hs-share"></canvas></div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h3 class="font-bold text-slate-900">美國餐廚容器終端：實質消費量 vs. 物價指數</h3>
+            <span class="badge bg-rose-50 text-rose-700 border border-rose-200">BEA 年度總盤｜量增 vs 價跌</span>
+          </div>
+          <p class="text-xs text-slate-500 mb-3">來源：BEA (`DUTERX1A020NBEA`, `DUTERG3A086NBEA`)｜辨別市場是「需求萎縮」還是「價格戰通縮」</p>
+          <div class="chart-box"><canvas id="chart-bea-tableware"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+      <h3 class="text-sm font-bold text-slate-800 mb-2">本期口徑與方法論備忘</h3>
+      <ul id="methodology-list" class="list-disc pl-5 text-xs text-slate-600 space-y-1"></ul>
+    </section>
+  </main>
+
+  <script>
+    const charts = {};
+
+    function initTabs() {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+          btn.classList.add('active');
+          document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
+        });
+      });
+    }
+
+    function fmtNum(v, suffix = '') {
+      if (v === null || v === undefined) return '官方無發布';
+      return `${v}${suffix}`;
+    }
+
+    function renderKPIs(fred) {
+      const strip = document.getElementById('kpi-strip');
+      const items = [
+        { id: 'DSPIC96', label: '實質可支配所得 (YoY)', key: 'yoy', suffix: '%', badge: '稅後｜含補助｜已扣通膨' },
+        { id: 'PSAVERT', label: '個人儲蓄率', key: 'value', suffix: '%', badge: '低於 5% 緩衝偏薄' },
+        { id: 'WFRBST01134', label: '頂層 1% 淨財富佔比', key: 'value', suffix: '%', badge: '每季｜資產減負債' },
+        { id: 'DRCCLACBS', label: '信用卡違約率', key: 'value', suffix: '%', badge: '每季｜底層壓力領先指標' },
+      ];
+      strip.innerHTML = items.map(it => {
+        const s = fred[it.id];
+        const latest = s?.latest;
+        const val = latest ? fmtNum(latest[it.key], it.suffix) : '尚無數據';
+        const dt = latest ? latest.date : '—';
+        const pct = s?.stats_10y?.percentile_10y;
+        const pctText = pct !== undefined ? `10年分位：${pct}%` : '';
+        return `
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex flex-col justify-between">
+            <div>
+              <div class="text-xs font-semibold text-slate-500">${it.label}</div>
+              <div class="text-2xl font-bold text-slate-900 mt-1">${val}</div>
+              <span class="badge bg-slate-100 text-slate-700 mt-2">${it.badge}</span>
+            </div>
+            <div class="flex justify-between text-[11px] text-slate-400 mt-3 pt-2 border-t border-slate-100">
+              <span>最新：${dt}</span>
+              <span>${pctText}</span>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function renderAnalysis(analysis) {
+      document.getElementById('ai-headline').textContent = analysis.headline || '尚無判讀';
+      document.getElementById('ai-summary').textContent = analysis.executive_summary || '';
+      if (analysis.model) {
+        document.getElementById('ai-model-tag').textContent = `${analysis.model} ・ ${analysis.analyzed_at_utc?.slice(0, 10) || ''}`;
+      }
+      const statusColors = {
+        '正向': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        '中性警戒': 'bg-amber-50 text-amber-800 border-amber-200',
+        '壓力升溫': 'bg-rose-50 text-rose-700 border-rose-200'
+      };
+      document.getElementById('ai-cards').innerHTML = (analysis.cards || []).map(c => `
+        <div class="border border-slate-200 rounded-xl p-3.5 bg-slate-50/50">
+          <div class="flex items-center justify-between gap-2 mb-1.5">
+            <span class="font-bold text-sm text-slate-900">${c.title}</span>
+            <span class="badge border ${statusColors[c.status] || 'bg-slate-100 text-slate-700'}">${c.status}</span>
+          </div>
+          <p class="text-xs text-slate-700 leading-relaxed">${c.analysis}</p>
+        </div>
+      `).join('');
+
+      document.getElementById('ai-hs-summary').textContent = analysis.hs3924_verdict?.summary || '';
+      document.getElementById('ai-hs-implication').textContent = analysis.hs3924_verdict?.strategic_implication
+        ? `實務啟示：${analysis.hs3924_verdict.strategic_implication}` : '';
+
+      document.getElementById('methodology-list').innerHTML = (analysis.methodology_notes || [])
+        .map(n => `<li>${n}</li>`).join('');
+    }
+
+    function alignSeries(seriesList, field = 'value') {
+      const dateSet = new Set();
+      seriesList.forEach(s => (s || []).forEach(r => dateSet.add(r.date)));
+      const labels = Array.from(dateSet).sort();
+      const aligned = seriesList.map(s => {
+        const map = new Map((s || []).map(r => [r.date, r[field]]));
+        return labels.map(d => map.has(d) ? map.get(d) : null);
+      });
+      return { labels, aligned };
+    }
+
+    function makeLineChart(canvasId, labels, datasets, extraOptions = {}) {
+      const ctx = document.getElementById(canvasId);
+      if (!ctx) return;
+      if (charts[canvasId]) charts[canvasId].destroy();
+      charts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          spanGaps: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+          scales: {
+            x: { ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+            y: { ticks: { font: { size: 10 } } },
+            ...(extraOptions.scales || {})
+          }
+        }
+      });
+    }
+
+    function renderCharts(data) {
+      const f = data.fred || {};
+      const d = data.derived || {};
+
+      const inc = alignSeries([f.DSPIC96?.series], 'yoy');
+      const sav = alignSeries([f.PSAVERT?.series], 'value');
+      const incDates = Array.from(new Set([...inc.labels, ...sav.labels])).sort();
+      const incMap = new Map((f.DSPIC96?.series || []).map(r => [r.date, r.yoy]));
+      const savMap = new Map((f.PSAVERT?.series || []).map(r => [r.date, r.value]));
+      makeLineChart('chart-income', incDates, [
+        { label: '實質可支配所得 YoY%', data: incDates.map(dt => incMap.get(dt) ?? null), borderColor: '#0284c7', backgroundColor: '#0284c7', borderWidth: 2, pointRadius: 0, yAxisID: 'y' },
+        { label: '個人儲蓄率 (%)', data: incDates.map(dt => savMap.get(dt) ?? null), borderColor: '#f59e0b', backgroundColor: '#f59e0b', borderWidth: 2, pointRadius: 0, yAxisID: 'y1' }
+      ], {
+        scales: {
+          y: { position: 'left', title: { display: true, text: 'YoY %' } },
+          y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '儲蓄率 %' } }
+        }
+      });
+
+      const med = f.MEHOINUSA672N?.series || [];
+      makeLineChart('chart-median', med.map(r => r.date.slice(0, 4)), [
+        { label: '實質家庭中位數所得 (美元)', data: med.map(r => r.value), borderColor: '#0f766e', backgroundColor: 'rgba(15,118,110,0.15)', fill: true, borderWidth: 2.5, pointRadius: 3 }
+      ]);
+
+      const w = alignSeries([f.WFRBST01134?.series, f.WFRBSB50215?.series], 'value');
+      makeLineChart('chart-wealth', w.labels, [
+        { label: '頂層 1% 淨財富佔比 (%)', data: w.aligned[0], borderColor: '#dc2626', borderWidth: 2.2, pointRadius: 1.5, yAxisID: 'y' },
+        { label: '底層 50% 淨財富佔比 (%)', data: w.aligned[1], borderColor: '#2563eb', borderWidth: 2.2, pointRadius: 1.5, yAxisID: 'y1' }
+      ], {
+        scales: {
+          y: { position: 'left', title: { display: true, text: '頂層 1% (%)' } },
+          y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '底層 50% (%)' } }
+        }
+      });
+
+      const dlq = f.DRCCLACBS?.series || [];
+      makeLineChart('chart-delinq', dlq.map(r => r.date), [
+        { label: '信用卡違約率 (%)', data: dlq.map(r => r.value), borderColor: '#e11d48', backgroundColor: 'rgba(225,29,72,0.12)', fill: true, borderWidth: 2.2, pointRadius: 2 }
+      ]);
+
+      const inf = alignSeries([f.PCEPI?.series, f.PCEPILFE?.series, f.CUSR0000SAH1?.series], 'yoy');
+      makeLineChart('chart-inflation', inf.labels, [
+        { label: '整體 PCE YoY%', data: inf.aligned[0], borderColor: '#0284c7', borderWidth: 2, pointRadius: 0 },
+        { label: '核心 PCE YoY%', data: inf.aligned[1], borderColor: '#7c3aed', borderWidth: 2, pointRadius: 0 },
+        { label: '居住類 CPI YoY%', data: inf.aligned[2], borderColor: '#dc2626', borderWidth: 2, borderDash: [5, 3], pointRadius: 0 }
+      ]);
+
+      const mix = alignSeries([f.PCEDGC96?.series, f.PCENDC96?.series, f.PCESC96?.series], 'yoy');
+      makeLineChart('chart-pce-mix', mix.labels, [
+        { label: '實質耐久財 YoY%', data: mix.aligned[0], borderColor: '#0284c7', borderWidth: 2, pointRadius: 0 },
+        { label: '實質非耐久財 YoY%', data: mix.aligned[1], borderColor: '#16a34a', borderWidth: 2, pointRadius: 0 },
+        { label: '實質服務消費 YoY%', data: mix.aligned[2], borderColor: '#f59e0b', borderWidth: 2, pointRadius: 0 }
+      ]);
+
+      const dg = d.dining_to_grocery_ratio || [];
+      const ec = f.ECOMPCTSA?.series || [];
+      const rtDates = Array.from(new Set([...dg.map(r => r.date), ...ec.map(r => r.date)])).sort();
+      const dgMap = new Map(dg.map(r => [r.date, r.value]));
+      const ecMap = new Map(ec.map(r => [r.date, r.value]));
+      makeLineChart('chart-retail-shift', rtDates, [
+        { label: '外食 ÷ 超市零售比', data: rtDates.map(dt => dgMap.get(dt) ?? null), borderColor: '#7c3aed', borderWidth: 2, pointRadius: 0, yAxisID: 'y' },
+        { label: '電商佔總零售 (%)', data: rtDates.map(dt => ecMap.get(dt) ?? null), borderColor: '#0d9488', borderWidth: 2, pointRadius: 2, spanGaps: true, yAxisID: 'y1' }
+      ], {
+        scales: {
+          y: { position: 'left', title: { display: true, text: '外食/超市比' } },
+          y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '電商佔比 %' } }
+        }
+      });
+
+      const hs = d.hs_material_substitution_12m || [];
+      makeLineChart('chart-hs-share', hs.map(r => r.ym), [
+        { label: 'HS 392410 塑膠份額 (%)', data: hs.map(r => r.plastic_share_pct), borderColor: '#2563eb', borderWidth: 2.5, pointRadius: 1 },
+        { label: 'HS 701349 玻璃份額 (%)', data: hs.map(r => r.glass_share_pct), borderColor: '#16a34a', borderWidth: 2.5, pointRadius: 1 },
+        { label: 'HS 732393 不鏽鋼份額 (%)', data: hs.map(r => r.steel_share_pct), borderColor: '#f97316', borderWidth: 2.5, pointRadius: 1 }
+      ]);
+
+      const tw = alignSeries([f.DUTERX1A020NBEA?.series, f.DUTERG3A086NBEA?.series], 'value');
+      makeLineChart('chart-bea-tableware', tw.labels.map(dt => dt.slice(0, 4)), [
+        { label: '餐廚容器實質消費量 (十億, 2017美元)', data: tw.aligned[0], borderColor: '#0f766e', borderWidth: 2.5, pointRadius: 3, yAxisID: 'y' },
+        { label: '餐廚容器物價指數 (2017=100)', data: tw.aligned[1], borderColor: '#e11d48', borderWidth: 2.5, pointRadius: 3, yAxisID: 'y1' }
+      ], {
+        scales: {
+          y: { position: 'left', title: { display: true, text: '實質消費量' } },
+          y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '物價指數' } }
+        }
+      });
+    }
+
+    async function boot() {
+      initTabs();
+      try {
+        const [dataResp, analysisResp] = await Promise.all([
+          fetch('./data/data.json?t=' + Date.now()),
+          fetch('./data/analysis.json?t=' + Date.now())
+        ]);
+        const data = await dataResp.json();
+        const analysis = await analysisResp.json();
+
+        document.getElementById('last-updated').textContent = data.meta?.generated_at_utc
+          ? data.meta.generated_at_utc.replace('T', ' ').slice(0, 19)
+          : '尚未初始化';
+
+        if (data.meta?.initialized === false) {
+          document.getElementById('init-banner').classList.remove('hidden');
+        } else {
+          renderKPIs(data.fred || {});
+          renderCharts(data);
+        }
+        renderAnalysis(analysis);
+      } catch (err) {
+        console.error(err);
+        document.getElementById('ai-headline').textContent = '無法讀取 data/data.json（請透過 GitHub Pages 或本地 HTTP 伺服器開啟）';
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>

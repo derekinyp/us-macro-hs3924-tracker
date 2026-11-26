@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "initialized": false,
+    "generated_at_utc": null,
+    "message": "尚未執行首次 GitHub Actions 抓取。請設定 FRED_API_KEY 與 GEMINI_API_KEY 後手動觸發工作流程。"
+  },
+  "fred": {},
+  "census": {},
+  "derived": {}
+}

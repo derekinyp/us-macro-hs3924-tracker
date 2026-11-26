@@ -1,0 +1,15 @@
+{
+  "initialized": false,
+  "headline": "系統已就緒：等待首次抓取美國官方數據",
+  "executive_summary": "本網站堅持 100% 使用美國官方 API（FRED 與 US Census）原始序列，不預塞任何示意或編造數字。請依照 README 步驟設定免費 API Key 並執行一次 GitHub Actions，約 60 秒內即可自動呈現近 10 年完整曲線與 Gemini 綜合判讀。",
+  "cards": [],
+  "hs3924_verdict": {
+    "summary": "尚未抓取 US Census 貿易數據。",
+    "strategic_implication": "首次執行後將自動計算 HS 392410（塑膠）vs 701349（玻璃）vs 732393（不鏽鋼）的 12 個月滾動進口份額變化。"
+  },
+  "methodology_notes": [
+    "實質可支配個人所得 (DSPIC96) 口徑：稅後、含政府補助、已扣通膨、不含資本利得。",
+    "實質家庭中位數所得 (MEHOINUSA672N) 口徑：稅前、僅含現金補助、已扣通膨（每年更新）。",
+    "US Census 海關進口數據僅反映美國進口端，不包含美國本土射出廠內銷份額。"
+  ]
+}
